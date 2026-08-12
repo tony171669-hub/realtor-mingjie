@@ -12,6 +12,8 @@ import {
 
 const TW_OFFSET_MS = 8 * 3600_000;
 const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+/** 粗略判斷是不是 IPv4／IPv6,只用來決定要不要把 remoteip 帶給 Cloudflare */
+const IP_LIKE = /^(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]{2,45})$/;
 
 export type PublicAppointmentQualification = AppointmentQualification & {
   organization?: string;
@@ -248,20 +250,29 @@ export async function verifyAppointmentTurnstile(input: {
 
   const token = clean(input.token, 2048);
   if (!token) return { configured: true, ok: false, unavailable: false };
+
+  // 🔴 remoteip 是選填,但送非法值 Cloudflare 會直接回 400 —— getClientIp 取不到來源時
+  //    會回字串 "unknown",照送就變成每一筆預約都回「人機驗證服務暫時無法使用」。
+  //    只有長得像 IP 才帶上去。
+  const params = new URLSearchParams({ secret, response: token });
+  if (IP_LIKE.test(input.ip)) params.set("remoteip", input.ip);
+
   try {
     const response = await fetch(TURNSTILE_VERIFY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        secret,
-        response: token,
-        remoteip: input.ip,
-      }),
+      body: params,
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
-    if (!response.ok) return { configured: true, ok: false, unavailable: true };
-    const result = (await response.json()) as { success?: boolean };
+    if (!response.ok) {
+      console.error("[appointment/turnstile] siteverify HTTP", response.status, await response.text().catch(() => ""));
+      return { configured: true, ok: false, unavailable: true };
+    }
+    const result = (await response.json()) as { success?: boolean; "error-codes"?: string[] };
+    if (result.success !== true) {
+      console.error("[appointment/turnstile] rejected:", result["error-codes"]);
+    }
     return { configured: true, ok: result.success === true, unavailable: false };
   } catch (error) {
     console.error("[appointment/turnstile] verification unavailable:", error);
