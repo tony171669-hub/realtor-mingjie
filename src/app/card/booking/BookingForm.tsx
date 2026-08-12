@@ -21,6 +21,7 @@ import {
   type OpenDay,
 } from "@/lib/appointment-constants";
 import { SOCIAL } from "../_links";
+import Turnstile, { turnstileEnabled } from "./Turnstile";
 import styles from "./Booking.module.css";
 import {
   TRACKING_CONSENT_CHANGED_EVENT,
@@ -277,6 +278,8 @@ export default function BookingForm() {
   const [qualification, setQualification] = useState<Qualification>({});
   const [note, setNote] = useState("");
   const [website, setWebsite] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
 
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState("");
@@ -623,6 +626,11 @@ export default function BookingForm() {
       return;
     }
     if (!bookingMode || !selectedIntent || !selectedSlot) return;
+    // 有開 Turnstile 時,沒過驗證就不要送 —— 送了後端也是回 400,不如當場講清楚
+    if (turnstileEnabled && !turnstileToken) {
+      setSubmitError("請先完成下方的人機驗證，再送出預約。");
+      return;
+    }
 
     setSubmitting(true);
     const key = idempotencyKey || window.crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -665,6 +673,7 @@ export default function BookingForm() {
           qualification: qualificationPayload,
           note: note.trim(),
           website,
+          turnstileToken,
           funnelSessionId: trackingEnabled ? sessionId : "",
           idempotencyKey: key,
           tracking: {
@@ -734,6 +743,12 @@ export default function BookingForm() {
       track("submit_error", "network");
     } finally {
       setSubmitting(false);
+      // Turnstile token 只能用一次:送出後一律重發驗證元件,
+      // 否則客戶遇到「時段被搶走」重選再送,會被擋成「人機驗證未完成」。
+      if (turnstileEnabled) {
+        setTurnstileToken("");
+        setTurnstileNonce((n) => n + 1);
+      }
     }
   };
 
@@ -1185,6 +1200,8 @@ export default function BookingForm() {
                   <strong>{selectedSlot?.dayLabel || activeDay?.label || ""} {formatTimeRange(selectedStart, duration)}（{durationLabel(duration)}）</strong>
                 </div>
               </div>
+
+              <Turnstile key={turnstileNonce} onToken={setTurnstileToken} />
 
               {submitError ? <div className={styles.errorNotice} role="alert">{submitError}</div> : null}
               <button className={styles.submit} type="submit" disabled={submitting}>
