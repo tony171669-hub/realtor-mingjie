@@ -15,6 +15,7 @@ npm-debug.log*
 # 本機臨時查資料庫的腳本（不要進版控）
 check-db.js
 cleanup-db.js
+verify-prod.js
 .DS_Store
 Thumbs.db
 .vercel
