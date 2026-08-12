@@ -237,10 +237,13 @@ export async function verifyAppointmentTurnstile(input: {
   token: unknown;
   ip: string;
 }): Promise<TurnstileVerification> {
-  const secret =
+  // 🔴 trim:金鑰貼進環境變數時常夾帶前導 tab/換行,不清掉會讓 siteverify 一直失敗,
+  //    而且從錯誤訊息完全看不出原因(前端曾因同樣的 tab 整個元件不渲染)。
+  const secret = (
     process.env.APPOINTMENT_TURNSTILE_SECRET_KEY ||
     process.env.TURNSTILE_SECRET_KEY ||
-    "";
+    ""
+  ).trim();
   if (!secret) return { configured: false, ok: true };
 
   const token = clean(input.token, 2048);

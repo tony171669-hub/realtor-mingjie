@@ -14,7 +14,10 @@
  */
 import { useEffect, useRef } from "react";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
+// 🔴 一定要 trim:從 Cloudflare 後台複製金鑰很容易夾帶前導 tab/換行,
+//    貼進 Vercel 環境變數後肉眼看不出來,Cloudflare 會直接回
+//    「Invalid input for parameter "sitekey"」而整個元件靜默不渲染。
+const SITE_KEY = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "").trim();
 const SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 const POLL_INTERVAL_MS = 100;
 const POLL_TIMEOUT_MS = 15_000;
