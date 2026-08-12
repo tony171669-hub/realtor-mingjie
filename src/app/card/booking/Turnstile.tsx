@@ -37,6 +37,7 @@ type TurnstileApi = {
 declare global {
   interface Window {
     turnstile?: TurnstileApi;
+    __tsDebug?: { version: number; effect: number; ticks: number; rendered: number; error: string };
   }
 }
 
@@ -65,13 +66,20 @@ export default function Turnstile({ onToken }: { onToken: (token: string) => voi
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = Date.now() + POLL_TIMEOUT_MS;
 
+    // 部署驗證用:正式站曾出現「腳本在、API 在、容器在,但 render 沒被呼叫」,
+    // 靠這個 marker 才分得出是程式沒跑、還是 Cloudflare 拒絕。
+    const dbg = (window.__tsDebug ??= { version: 4, effect: 0, ticks: 0, rendered: 0, error: "" });
+    dbg.effect += 1;
+
     ensureScript();
 
     const tryRender = () => {
       if (cancelled || widgetIdRef.current) return;
+      dbg.ticks += 1;
       const box = boxRef.current;
       const api = window.turnstile;
       if (box && typeof api?.render === "function") {
+        dbg.rendered += 1;
         try {
           widgetIdRef.current =
             api.render(box, {
@@ -81,7 +89,8 @@ export default function Turnstile({ onToken }: { onToken: (token: string) => voi
               "expired-callback": () => onTokenRef.current(""),
               "error-callback": () => onTokenRef.current(""),
             }) ?? null;
-        } catch {
+        } catch (e) {
+          dbg.error = e instanceof Error ? e.message : String(e);
           onTokenRef.current("");
         }
         return;
