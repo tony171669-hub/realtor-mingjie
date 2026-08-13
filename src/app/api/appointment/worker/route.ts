@@ -100,10 +100,17 @@ async function runOne(row: Awaited<ReturnType<typeof listDueAppointmentOutbox>>[
     }
 
     const dispatch = await notifyNewAppointment(toNotifyInput(appt), { phase, onlyPending: true });
-    await finishAppointmentOutbox(row.id, dispatch.ok ? null : "notify dispatch reported failure");
+
+    // 🔴 只看 Email 決定成敗,不要看 LINE。
+    //    沒設 LINE_CHANNEL_ACCESS_TOKEN 時 adminLine 一定是 failed,
+    //    連帶讓 dispatch.ok=false;若照它判定,任務會永遠 retry、每 5 分鐘重跑一次。
+    //    Email 才是這裡真正要保證送達的管道。
+    const emailFailed =
+      dispatch.adminEmail === "failed" || dispatch.customerEmail === "failed";
+    await finishAppointmentOutbox(row.id, emailFailed ? "notification email failed" : null);
     return {
       ...base,
-      result: `notified admin=${dispatch.adminEmail ?? "n/a"} customer=${dispatch.customerEmail}`,
+      result: `admin=${dispatch.adminEmail ?? "n/a"} customer=${dispatch.customerEmail} line=${dispatch.adminLine ?? "n/a"}`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
