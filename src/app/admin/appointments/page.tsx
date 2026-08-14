@@ -1,4 +1,5 @@
-import { isCurrentUserAdmin } from "@/lib/admin-check";
+import { redirect } from "next/navigation";
+import { getAdminCheckArgs, isCurrentUserAdmin } from "@/lib/admin-check";
 import {
   intentEmoji,
   intentLabel,
@@ -299,6 +300,12 @@ export default async function AppointmentsAdminPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  // 未登入 → 導去 Google 登入(原本直接 throw,畫面只會顯示 500,使用者不知道要登入)。
+  // 已登入但不在白名單 → 才是真的權限不足,維持擋下。
+  const { email } = await getAdminCheckArgs();
+  if (!email) {
+    redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/admin/appointments")}`);
+  }
   if (!(await isCurrentUserAdmin())) throw new Error("權限不足");
 
   const sp = await searchParams;
